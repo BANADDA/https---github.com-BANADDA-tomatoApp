@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, forwardRef, useEffect } from "react";
 import { StatusBar } from "expo-status-bar";
 import {
   Modal,
@@ -7,13 +7,13 @@ import {
   Platform,
   Pressable,
   Text,
+  ImageBackground,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import * as MediaLibrary from "expo-media-library";
 import { captureRef } from "react-native-view-shot";
 import domtoimage from "dom-to-image";
-import { Camera } from "expo-camera";
 
 import Button from "../elements/Button";
 import ImageViewer from "../elements/ImageViewer";
@@ -22,19 +22,33 @@ import IconButton from "../elements/IconButton";
 import EmojiPicker from "../elements/EmojiPicker";
 import EmojiList from "../elements/EmojiList";
 import EmojiSticker from "../elements/EmojiSticker";
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import { useRoute } from "@react-navigation/native";
 
 const PlaceholderImage = require("../assets/giffy.gif");
 
-export default function Dashboard() {
+const Dashboard = forwardRef(({ navigation }, ref) => {
+  // Hooks
   const [modalVisible, setModalVisible] = useState(false);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [showAppOptions, setShowAppOptions] = useState(false);
   const [pickedEmoji, setPickedEmoji] = useState(null);
   const [selectedImage, setSelectedImage] = useState(null);
-
   const [status, requestPermission] = MediaLibrary.usePermissions();
   const imageRef = useRef();
+  const route = useRoute();
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Model Prediction
+
+  // Camera and Gallery Logic
+  useEffect(() => {
+    const { takenImage } = route.params || {};
+    if (takenImage) {
+      setSelectedImage(takenImage);
+      setShowAppOptions(true);
+    }
+  }, [route.params]);
 
   if (status === null) {
     requestPermission();
@@ -54,6 +68,38 @@ export default function Dashboard() {
     }
   };
 
+  const uploadImage = async () => {
+    setIsLoading(true);
+
+    const formData = new FormData();
+    formData.append("file", {
+      uri: selectedImage,
+      type: "image/jpeg",
+      name: "image.jpg",
+    });
+
+    try {
+      const response = await fetch("https://maizemodel.onrender.com/predict/", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error("Error uploading image");
+      }
+
+      const data = await response.json();
+      // Handle the response data as needed
+      console.log(data);
+
+      setIsLoading(false);
+      setModalVisible(true); // Display the popup after receiving the results
+    } catch (error) {
+      console.log("Error:", error);
+      setIsLoading(false);
+    }
+  };
+
   const onReset = () => {
     setShowAppOptions(false);
   };
@@ -69,7 +115,7 @@ export default function Dashboard() {
   const onSaveImageAsync = async () => {
     if (Platform.OS !== "web") {
       try {
-        const localUri = await captureRef(imageRef, {
+        const localUri = await captureRef(ref, {
           height: 440,
           quality: 1,
         });
@@ -89,7 +135,7 @@ export default function Dashboard() {
         })
         .then((dataUrl) => {
           let link = document.createElement("a");
-          link.download = "sticker-smash.jpeg";
+          link.download = "1.jpeg";
           link.href = dataUrl;
           link.click();
         })
@@ -98,101 +144,128 @@ export default function Dashboard() {
         });
     }
   };
-
   return (
     <GestureHandlerRootView style={styles.container}>
-      <View style={styles.imageContainer}>
-      <Text style={styles.paragraph}>
-        Change code in the editor and watch it change on your phone! Save to get a shareable url.
-      </Text>
-        <View ref={imageRef} collapsable={false}>
-          <ImageViewer
-            ref={imageRef}
-            placeholderImageSource={PlaceholderImage}
-            selectedImage={selectedImage}
-          />
-          {pickedEmoji !== null ? (
-            <EmojiSticker imageSize={40} stickerSource={pickedEmoji} />
-          ) : null}
+      {/* <ImageBackground
+        source={require("../assets/bg2.png")}
+        style={styles.background}
+      > */}
+        <View style={styles.imageContainer}>
+          <Text style={styles.paragraph}>
+            Use Left button to open camera, or Right button open gallery
+          </Text>
+          <View ref={imageRef} collapsable={false}>
+            <ImageViewer
+              ref={imageRef}
+              placeholderImageSource={PlaceholderImage}
+              selectedImage={selectedImage}
+            />
+            {pickedEmoji !== null ? (
+              <EmojiSticker imageSize={40} stickerSource={pickedEmoji} />
+            ) : null}
+          </View>
         </View>
-      </View>
-      {showAppOptions ? (
-        <View style={styles.optionsContainer}>
-          <Modal
-            animationType="fade"
-            transparent={true}
-            presentationStyle="pageSheet"
-            visible={modalVisible}
-            onRequestClose={() => {
-              Alert.alert("Closed");
-              setModalVisible(!modalVisible);
-            }}
-          >
-            <View style={styles.centeredView}>
-              <View style={styles.modalView}>
-                <Text style={styles.baseText}>
-                  <View style={styles.titleText}>
-                    <Text style={styles.heading}>Diagnosis Results</Text>
-                  </View>
-                  <View style={[styles.titleText1]}>
-                    <Text style={{flexDirection: 'row', flexWrap: 'nowrap', overflow: 'hidden'}}>Predicted Class: </Text>
-                    <Text style={styles.class}>Tomato</Text>
-                  </View>
-                  <View style={[styles.titleText1]}>
-                    <Text style={[{flexDirection: 'row', flexWrap: 'nowrap', overflow: 'hidden'}]}>Confidence Level: </Text>
-                    <Text style={styles.class}>90%</Text>
-                  </View>
-                </Text>
-                <Pressable
-                  style={[styles.button, styles.buttonClose]}
-                  onPress={() => setModalVisible(!modalVisible)}
-                >
-                  <MaterialIcons name="close" size={38} color="white" />
-                </Pressable>
+        {showAppOptions ? (
+          <View style={styles.optionsContainer}>
+            <Modal
+              animationType="fade"
+              transparent={true}
+              visible={modalVisible}
+              onRequestClose={() => {
+                Alert.alert("Closed");
+                setModalVisible(!modalVisible);
+              }}
+            >
+              <View style={styles.centeredView}>
+                <View style={styles.modalView}>
+                  <Text style={styles.baseText}>
+                    <View style={styles.titleText}>
+                      <Text style={styles.heading}>Diagnosis Results</Text>
+                    </View>
+                    <View style={styles.resultsContainer}>
+                      {results.map((result, index) => (
+                        <View key={index} style={styles.resultItem}>
+                          <Text style={styles.resultClass}>
+                            Predicted Class: {result.predicted_class}
+                          </Text>
+                          <Text style={styles.resultScore}>
+                            Confidence Score: {result.confidence_score}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  </Text>
+                  <Pressable
+                    style={[styles.button, styles.buttonClose]}
+                    onPress={() => setModalVisible(!modalVisible)}
+                  >
+                    <MaterialIcons name="close" size={38} color="white" />
+                  </Pressable>
+                </View>
               </View>
+            </Modal>
+            <View style={styles.optionsRow}>
+              <IconButton icon="refresh" label="Reset" onPress={onReset} />
+              <CircleButton
+                onPress={() => {
+                  uploadImage();
+                }}
+              />
+              {/* <CircleButton
+              onPress={() => {
+                setModalVisible(true);
+              }}
+            /> */}
+              <IconButton
+                icon="save-alt"
+                label="Save"
+                onPress={onSaveImageAsync}
+              />
             </View>
-          </Modal>
-          <View style={styles.optionsRow}>
-            <IconButton icon="refresh" label="Reset" onPress={onReset} />
-            <CircleButton onPress={() => setModalVisible(true)} />
-            <IconButton
-              icon="save-alt"
-              label="Save"
-              onPress={onSaveImageAsync}
-            />
           </View>
-        </View>
-      ) : (
-        <>
-          <View style={styles.footerContainer1}>
-            <Button
-              theme="secondary"
-              label="Use Camera"
-              onPress={() => navigation.navigate("Camera")}
-            />
-            <Button
-              theme="primary"
-              label="Use Gallery"
-              onPress={pickImageAsync}
-            />
-          </View>
-          {/* <View style={styles.footerContainer}>
+        ) : (
+          <>
+            <View style={styles.footerContainer1}>
+              <Button
+                theme="secondary"
+                label="Use Camera"
+                onPress={() =>
+                  navigation.navigate("Camera", {
+                    setDashboardImage: setSelectedImage,
+                  })
+                }
+              />
+
+              <Button
+                theme="primary"
+                label="Use Gallery"
+                onPress={pickImageAsync}
+              />
+            </View>
+            {/* <View style={styles.footerContainer}>
             <Button
               label="Use this photo"
               onPress={() => setShowAppOptions(true)}
             />
           </View> */}
-        </>
-      )}
-      <EmojiPicker isVisible={isModalVisible} onClose={onModalClose}>
-        <EmojiList onSelect={setPickedEmoji} onCloseModal={onModalClose} />
-      </EmojiPicker>
-      <StatusBar style="auto" />
+          </>
+        )}
+        <EmojiPicker isVisible={isModalVisible} onClose={onModalClose}>
+          <EmojiList onSelect={setPickedEmoji} onCloseModal={onModalClose} />
+        </EmojiPicker>
+        <StatusBar style="auto" />
+      {/* </ImageBackground> */}
     </GestureHandlerRootView>
-  );  
-}
+  );
+});
+
+export default Dashboard;
 
 const styles = StyleSheet.create({
+  background: {
+    width: "100%",
+    height: "100%",
+  },
   container: {
     flex: 1,
     backgroundColor: "#25292e",
@@ -200,20 +273,19 @@ const styles = StyleSheet.create({
   },
   imageContainer: {
     paddingTop: 58,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     padding: 24,
   },
   paragraph: {
     margin: 24,
     marginTop: 0,
-    color: 'white',
+    color: "white",
     fontSize: 18,
-    fontWeight: 'bold',
-    textAlign: 'center',
+    fontWeight: "bold",
+    textAlign: "center",
   },
   baseText: {
-    fontFamily: "Cochin",
     marginBottom: 20,
   },
   heading: {
@@ -226,8 +298,8 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     padding: "5%",
-    paddingLeft: '0%',
-    paddingRight: '0%',
+    paddingLeft: "0%",
+    paddingRight: "0%",
   },
   titleText1: {
     fontSize: 20,
@@ -235,8 +307,8 @@ const styles = StyleSheet.create({
     color: "tomato",
     textAlign: "left",
     padding: "5%",
-    paddingLeft: '0%',
-    paddingRight: '0%',
+    paddingLeft: "0%",
+    paddingRight: "0%",
   },
   class: {
     color: "white",
@@ -262,6 +334,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flexDirection: "row",
     justifyContent: "center",
+    marginLeft: "10%",
   },
   centeredView: {
     flex: 1,
@@ -306,77 +379,17 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     textAlign: "center",
   },
+  resultsContainer: {
+    marginTop: 10,
+  },
+  resultItem: {
+    marginBottom: 5,
+  },
+  resultClass: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  resultScore: {
+    fontSize: 14,
+  },
 });
-
-// import { useState } from 'react';
-// import { StatusBar } from "expo-status-bar";
-// import { StyleSheet, View} from "react-native";
-// import Button from '.../elements/Button';
-// import ImageViewer from '.../elements/ImageViewer';
-// import * as ImagePicker from 'expo-image-picker';
-// import { Camera } from 'expo-camera';
-
-// const PlaceholderImage = require("../assets/background-image.png");
-
-// export default function Dashboard() {
-//   //Gallery
-//   const [selectedImage, setSelectedImage] = useState(null);
-
-//   const pickImageAsync = async () => {
-//     let result = await ImagePicker.launchImageLibraryAsync({
-//       allowsEditing: true,
-//       quality: 1,
-//     });
-
-//     if (!result.canceled) {
-//       setSelectedImage(result.assets[0].uri);
-//       // console.log(result.assets[0].uri)
-//     } else {
-//       alert('You did not select any image.');
-//     }
-//   };
-//   return (
-//     <View style={styles.container}>
-//       <View style={styles.imageContainer}>
-//         <ImageViewer
-//           placeholderImageSource={PlaceholderImage}
-//           selectedImage={selectedImage}
-//         />
-//       </View>
-//       <View style={styles.footerContainer1}>
-//         <Button label="Use this photo" />
-//       </View>
-//       <View style={styles.footerContainer}>
-//         <Button theme="secondary" label="Use Camera"
-//           onPress={() => navigation.navigate("Camera")} />
-//         <Button theme="primary" label="Use Gallery" onPress={pickImageAsync} />
-//       </View>
-//       <StatusBar style="auto" />
-//     </View>
-//   );
-// }
-
-// const styles = StyleSheet.create({
-//   container: {
-//     flex: 1,
-//     backgroundColor: '#25292e',
-//     alignItems: 'center',
-//   },
-//   imageContainer: {
-//     flex: 1,
-//     paddingTop: 58,
-//   },
-//   footerContainer: {
-//     flex: 1,
-//     flexDirection: "row",
-//     justifyContent: "space-around",
-//     margin: '20%',
-//     marginTop: '10%',
-//   },
-//   footerContainer1: {
-//     flex: 1,
-//     alignItems: 'center',
-//     margin: '20%',
-//     marginBottom: '0%',
-//   }
-// });
